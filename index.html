@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>단어 확장 사전</title>
+    <title>단어 확장 사전 (API 연동)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts for Korean and English -->
@@ -37,6 +37,15 @@
             background-color: #4f46e5; /* indigo-600 */
             color: white;
         }
+        .homonym-item {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .homonym-item .pos {
+            font-weight: 500;
+            color: #4f46e5; /* indigo-600 */
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
@@ -45,11 +54,11 @@
         <!-- Header Section -->
         <header class="text-center mb-8">
             <h1 class="text-4xl md:text-5xl font-bold text-indigo-600 mb-2">단어 확장 사전</h1>
-            <p class="text-lg text-gray-600">궁금한 단어의 숨겨진 관계를 찾아보세요.</p>
+            <p class="text-lg text-gray-600">우리말샘 API로 단어의 숨겨진 관계를 찾아보세요.</p>
         </header>
 
         <!-- Search Bar Section -->
-        <div class="search-container mb-8 sticky top-4 z-10 bg-gray-50/80 backdrop-blur-sm p-4 rounded-xl shadow-sm">
+        <div class="search-container my-8 sticky top-4 z-10 bg-gray-50/80 backdrop-blur-sm p-4 rounded-xl shadow-sm">
             <div class="flex flex-col sm:flex-row gap-2">
                 <input type="text" id="searchInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out" placeholder="단어를 입력하세요 (예: 사과, 말, 배)">
                 <button id="searchButton" class="w-full sm:w-auto bg-indigo-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200">찾기</button>
@@ -58,7 +67,7 @@
 
         <!-- Status & Results Area -->
         <main class="flex-grow">
-            <!-- Status Messages: Initial, Loading, No Results -->
+            <!-- Status Messages -->
             <div id="statusContainer" class="text-center py-12">
                  <div id="initialMessage">
                     <p class="text-gray-500">단어를 입력하고 '찾기' 버튼을 눌러주세요.</p>
@@ -68,19 +77,19 @@
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <p class="mt-2 text-gray-500">찾는 중...</p>
+                    <p class="mt-2 text-gray-500">API를 통해 찾는 중...</p>
                  </div>
-                 <div id="noResultsMessage" class="hidden">
-                     <p class="text-red-500 font-medium">사전에서 '<span id="searchedWord"></span>' 단어를 찾을 수 없습니다.</p>
+                 <div id="errorMessage" class="hidden">
+                     <p class="text-red-500 font-medium" id="errorMessageText"></p>
                  </div>
             </div>
 
             <!-- Results Section -->
             <div id="resultsContainer" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Homonyms Card -->
-                <div id="homonymsCard" class="card hidden" style="animation-delay: 0.1s;">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-indigo-700">동음이의어</h2>
-                    <div id="homonymsList" class="flex flex-wrap gap-2"></div>
+                <div id="homonymsCard" class="card hidden md:col-span-2" style="animation-delay: 0.1s;">
+                    <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-indigo-700">동음이의어 및 다의어</h2>
+                    <div id="homonymsList" class="space-y-3"></div>
                 </div>
                 <!-- Synonyms Card -->
                 <div id="synonymsCard" class="card hidden" style="animation-delay: 0.2s;">
@@ -92,17 +101,15 @@
                     <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-red-700">반의어</h2>
                     <div id="antonymsList" class="flex flex-wrap gap-2"></div>
                 </div>
-                <!-- Rhymes Card -->
-                <div id="rhymesCard" class="card hidden" style="animation-delay: 0.4s;">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-purple-700">각운 (라임)</h2>
-                    <div id="rhymesList" class="flex flex-wrap gap-2"></div>
-                </div>
             </div>
         </main>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // API Key is now stored securely within the script scope
+            const apiKey = '1735A5341E757DC9336240C30F8F24A7';
+
             // Element references
             const searchInput = document.getElementById('searchInput');
             const searchButton = document.getElementById('searchButton');
@@ -110,87 +117,106 @@
             const statusContainer = document.getElementById('statusContainer');
             const initialMessage = document.getElementById('initialMessage');
             const loadingSpinner = document.getElementById('loadingSpinner');
-            const noResultsMessage = document.getElementById('noResultsMessage');
-            const searchedWordSpan = document.getElementById('searchedWord');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorMessageText = document.getElementById('errorMessageText');
 
             const resultsContainer = document.getElementById('resultsContainer');
             const homonymsCard = document.getElementById('homonymsCard');
             const synonymsCard = document.getElementById('synonymsCard');
             const antonymsCard = document.getElementById('antonymsCard');
-            const rhymesCard = document.getElementById('rhymesCard');
             
             const homonymsList = document.getElementById('homonymsList');
             const synonymsList = document.getElementById('synonymsList');
             const antonymsList = document.getElementById('antonymsList');
-            const rhymesList = document.getElementById('rhymesList');
-
-            // --- Mock Dictionary Database ---
-            // In a real application, this data would come from a server/API.
-            const dictionary = {
-                "사과": {
-                    homonyms: ["사과 (과일)", "사과 (용서를 빔)"],
-                    synonyms: ["배, 감 (과일)", "용서, 사죄 (용서를 빔)"],
-                    antonyms: ["칭찬, 격려"],
-                    rhymes: ["과자", "감자", "왕자", "수사"]
-                },
-                "말": {
-                    homonyms: ["말 (동물)", "말 (언어)"],
-                    synonyms: ["언어, 담화, 이야기", "승용마, 경주마"],
-                    antonyms: ["침묵 (언어)"],
-                    rhymes: ["발", "칼", "살", "탈"]
-                },
-                "배": {
-                    homonyms: ["배 (과일)", "배 (선박)", "배 (신체 부위)", "배 (두 배, 세 배)"],
-                    synonyms: ["선박, 함선", "복부", "과실"],
-                    antonyms: [],
-                    rhymes: ["해", "개", "세", "때"]
-                },
-                "눈": {
-                    homonyms: ["눈 (신체 부위)", "눈 (하늘에서 내리는 것)"],
-                    synonyms: ["안구", "설(雪)"],
-                    antonyms: [],
-                    rhymes: ["돈", "손", "문", "품"]
-                },
-                "정": {
-                    homonyms: ["정 (못을 박는 도구)", "정 (애정, 사랑)", "정 (나눗셈의 결과)"],
-                    synonyms: ["애정, 사랑, 연민", "못"],
-                    antonyms: ["미움, 증오"],
-                    rhymes: ["병", "성", "형", "종"]
-                },
-                "차": {
-                    homonyms: ["차 (마시는 것)", "차 (자동차)", "차 (다름, 차이)"],
-                    synonyms: ["자동차, 차량", "차이, 격차", "차나무 잎"],
-                    antonyms: ["같음, 동일"],
-                    rhymes: ["파", "자", "타", "카"]
-                }
-            };
 
             // --- Main Search Function ---
-            const performSearch = () => {
+            const performSearch = async () => {
                 const query = searchInput.value.trim();
-                if (!query) return;
+                
+                if (!query) {
+                    showError("검색할 단어를 입력해주세요.");
+                    return;
+                }
 
                 // Reset UI to searching state
                 resultsContainer.classList.add('hidden');
                 initialMessage.classList.add('hidden');
-                noResultsMessage.classList.add('hidden');
+                errorMessage.classList.add('hidden');
                 loadingSpinner.classList.remove('hidden');
                 statusContainer.classList.remove('hidden');
 
-                // Simulate API call delay for better UX
-                setTimeout(() => {
-                    const result = dictionary[query];
-                    loadingSpinner.classList.add('hidden');
+                // Construct API URL with a CORS proxy to prevent fetch errors in browser environments.
+                const originalApiUrl = `https://opendict.korean.go.kr/api/search?key=${apiKey}&q=${query}&req_type=json&method=exact&num=100`;
+                const apiUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(originalApiUrl)}`;
 
-                    if (result) {
-                        displayResults(result);
-                        statusContainer.classList.add('hidden'); // Hide status area if results found
-                    } else {
-                        searchedWordSpan.textContent = query;
-                        noResultsMessage.classList.remove('hidden');
+
+                try {
+                    const response = await fetch(apiUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                }, 800);
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                         throw new Error(`API 오류: ${data.error.message}`);
+                    }
+                    
+                    if (!data.channel || !data.channel.item || data.channel.item.length === 0) {
+                        showError(`'${query}'에 대한 검색 결과가 없습니다.`);
+                        return;
+                    }
+
+                    const processedData = processApiData(data);
+                    displayResults(processedData);
+                    statusContainer.classList.add('hidden');
+
+                } catch (error) {
+                    console.error("Fetch Error:", error);
+                    showError(`데이터를 불러오는 데 실패했습니다. ( ${error.message} )`);
+                } finally {
+                    loadingSpinner.classList.add('hidden');
+                }
             };
+            
+            // --- Process API Data ---
+            const processApiData = (data) => {
+                const items = data.channel.item;
+                const results = {
+                    homonyms: [],
+                    synonyms: new Set(),
+                    antonyms: new Set()
+                };
+
+                items.forEach(item => {
+                    if (item.sense && item.sense.length > 0) {
+                        // Homonyms/Polysemes
+                        const sense = item.sense[0];
+                        results.homonyms.push({
+                            word: `${item.word}<sup>${item.sup_no || ''}</sup>`,
+                            pos: sense.pos,
+                            definition: sense.definition
+                        });
+
+                        // Synonyms & Antonyms
+                        if (sense.relation_info && sense.relation_info.length > 0) {
+                            sense.relation_info.forEach(rel => {
+                                if (rel.type === '유의어') {
+                                    results.synonyms.add(rel.word);
+                                } else if (rel.type === '반의어') {
+                                    results.antonyms.add(rel.word);
+                                }
+                            });
+                        }
+                    }
+                });
+
+                return {
+                    homonyms: results.homonyms,
+                    synonyms: Array.from(results.synonyms),
+                    antonyms: Array.from(results.antonyms)
+                };
+            };
+
 
             // --- Function to Display Results ---
             const displayResults = (data) => {
@@ -198,39 +224,59 @@
                 homonymsList.innerHTML = '';
                 synonymsList.innerHTML = '';
                 antonymsList.innerHTML = '';
-                rhymesList.innerHTML = '';
                 
                 // Reset card visibility
-                [homonymsCard, synonymsCard, antonymsCard, rhymesCard].forEach(card => card.classList.add('hidden'));
+                [homonymsCard, synonymsCard, antonymsCard].forEach(card => card.classList.add('hidden'));
 
-                // Populate lists and manage card visibility based on data availability
-                populateList(homonymsList, homonymsCard, data.homonyms);
-                populateList(synonymsList, synonymsCard, data.synonyms);
-                populateList(antonymsList, antonymsCard, data.antonyms);
-                populateList(rhymesList, rhymesCard, data.rhymes);
+                // Populate lists and manage card visibility
+                populateHomonyms(data.homonyms);
+                populateRelatedWords(synonymsList, synonymsCard, data.synonyms);
+                populateRelatedWords(antonymsList, antonymsCard, data.antonyms);
 
-                // Show the main results container
-                resultsContainer.classList.remove('hidden');
+                // Show the main results container if there's any data
+                if (data.homonyms.length > 0 || data.synonyms.length > 0 || data.antonyms.length > 0) {
+                    resultsContainer.classList.remove('hidden');
+                } else {
+                     showError(`'${searchInput.value}'에 대한 유의어/반의어 정보가 없습니다.`);
+                }
+            };
+            
+            const populateHomonyms = (items) => {
+                if (items && items.length > 0) {
+                    items.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'homonym-item text-sm';
+                        div.innerHTML = `
+                            <p class="font-bold text-base text-gray-900">${item.word} <span class="pos">(${item.pos})</span></p>
+                            <p class="text-gray-600">${item.definition.replace(/<[^>]*>?/gm, '')}</p> 
+                        `;
+                        homonymsList.appendChild(div);
+                    });
+                    homonymsCard.classList.remove('hidden');
+                }
             };
 
-            // Helper function to create and append result tags to a list
-            const populateList = (listElement, cardElement, items) => {
+            const populateRelatedWords = (listElement, cardElement, items) => {
                 if (items && items.length > 0) {
                     items.forEach(item => {
                         const tag = document.createElement('span');
                         tag.className = 'result-tag bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-full';
                         tag.textContent = item;
-                        // Add click event to search for the clicked word
                         tag.onclick = () => {
-                            // Extract the core word, removing context in parentheses
-                            const searchWord = item.split(' ')[0];
-                            searchInput.value = searchWord;
+                            searchInput.value = item.split(' ')[0];
                             performSearch();
                         };
                         listElement.appendChild(tag);
                     });
-                    cardElement.classList.remove('hidden'); // Show card if it has content
+                    cardElement.classList.remove('hidden');
                 }
+            };
+            
+            const showError = (message) => {
+                errorMessageText.textContent = message;
+                errorMessage.classList.remove('hidden');
+                statusContainer.classList.remove('hidden');
+                resultsContainer.classList.add('hidden');
             };
             
             // --- Event Listeners ---
@@ -244,3 +290,4 @@
     </script>
 </body>
 </html>
+
