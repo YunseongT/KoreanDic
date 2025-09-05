@@ -101,6 +101,11 @@
                     <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-red-700">반의어</h2>
                     <div id="antonymsList" class="flex flex-wrap gap-2"></div>
                 </div>
+                <!-- Rhymes Card -->
+                <div id="rhymesCard" class="card hidden md:col-span-2" style="animation-delay: 0.4s;">
+                    <h2 class="text-xl font-semibold mb-3 border-b pb-2 text-cyan-700">각운이 맞는 단어 (검색결과 기반)</h2>
+                    <div id="rhymesList" class="flex flex-wrap gap-2"></div>
+                </div>
             </div>
         </main>
     </div>
@@ -124,10 +129,12 @@
             const homonymsCard = document.getElementById('homonymsCard');
             const synonymsCard = document.getElementById('synonymsCard');
             const antonymsCard = document.getElementById('antonymsCard');
+            const rhymesCard = document.getElementById('rhymesCard');
             
             const homonymsList = document.getElementById('homonymsList');
             const synonymsList = document.getElementById('synonymsList');
             const antonymsList = document.getElementById('antonymsList');
+            const rhymesList = document.getElementById('rhymesList');
 
             // --- Main Search Function ---
             const performSearch = async () => {
@@ -145,10 +152,9 @@
                 loadingSpinner.classList.remove('hidden');
                 statusContainer.classList.remove('hidden');
 
-                // Construct API URL with a CORS proxy to prevent fetch errors in browser environments.
                 const originalApiUrl = `https://opendict.korean.go.kr/api/search?key=${apiKey}&q=${query}&req_type=json&method=exact&num=100`;
-                const apiUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(originalApiUrl)}`;
-
+                // Using a different CORS proxy to resolve fetch issues.
+                const apiUrl = `https://thingproxy.freeboard.io/fetch/${originalApiUrl}`;
 
                 try {
                     const response = await fetch(apiUrl);
@@ -166,7 +172,7 @@
                         return;
                     }
 
-                    const processedData = processApiData(data);
+                    const processedData = processApiData(data, query);
                     displayResults(processedData);
                     statusContainer.classList.add('hidden');
 
@@ -179,18 +185,20 @@
             };
             
             // --- Process API Data ---
-            const processApiData = (data) => {
+            const processApiData = (data, query) => {
                 const items = data.channel.item;
                 const results = {
                     homonyms: [],
                     synonyms: new Set(),
-                    antonyms: new Set()
+                    antonyms: new Set(),
+                    rhymes: new Set()
                 };
+                const lastCharOfQuery = query.slice(-1);
 
                 items.forEach(item => {
                     if (item.sense && item.sense.length > 0) {
-                        // Homonyms/Polysemes
                         const sense = item.sense[0];
+                        // Homonyms/Polysemes
                         results.homonyms.push({
                             word: `${item.word}<sup>${item.sup_no || ''}</sup>`,
                             pos: sense.pos,
@@ -210,13 +218,22 @@
                     }
                 });
 
+                // Find Rhyming words from synonyms and antonyms
+                const allRelatedWords = [...results.synonyms, ...results.antonyms];
+                allRelatedWords.forEach(word => {
+                    const cleanWord = word.split(' ')[0]; // Handle cases like '사과 (沙果)'
+                    if (cleanWord && cleanWord.length > 1 && cleanWord.slice(-1) === lastCharOfQuery && cleanWord !== query) {
+                        results.rhymes.add(cleanWord);
+                    }
+                });
+
                 return {
                     homonyms: results.homonyms,
                     synonyms: Array.from(results.synonyms),
-                    antonyms: Array.from(results.antonyms)
+                    antonyms: Array.from(results.antonyms),
+                    rhymes: Array.from(results.rhymes)
                 };
             };
-
 
             // --- Function to Display Results ---
             const displayResults = (data) => {
@@ -224,20 +241,22 @@
                 homonymsList.innerHTML = '';
                 synonymsList.innerHTML = '';
                 antonymsList.innerHTML = '';
+                rhymesList.innerHTML = '';
                 
                 // Reset card visibility
-                [homonymsCard, synonymsCard, antonymsCard].forEach(card => card.classList.add('hidden'));
+                [homonymsCard, synonymsCard, antonymsCard, rhymesCard].forEach(card => card.classList.add('hidden'));
 
                 // Populate lists and manage card visibility
                 populateHomonyms(data.homonyms);
                 populateRelatedWords(synonymsList, synonymsCard, data.synonyms);
                 populateRelatedWords(antonymsList, antonymsCard, data.antonyms);
+                populateRelatedWords(rhymesList, rhymesCard, data.rhymes);
 
                 // Show the main results container if there's any data
-                if (data.homonyms.length > 0 || data.synonyms.length > 0 || data.antonyms.length > 0) {
+                if (data.homonyms.length > 0 || data.synonyms.length > 0 || data.antonyms.length > 0 || data.rhymes.length > 0) {
                     resultsContainer.classList.remove('hidden');
                 } else {
-                     showError(`'${searchInput.value}'에 대한 유의어/반의어 정보가 없습니다.`);
+                     showError(`'${searchInput.value}'에 대한 관련 단어 정보가 없습니다.`);
                 }
             };
             
